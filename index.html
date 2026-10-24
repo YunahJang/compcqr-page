@@ -1,0 +1,765 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CompCQR: Compositional Query Generation for Training-Free Conversational Search</title>
+<meta name="description" content="CompCQR turns 3 LLM calls into 325 ordered query variations per conversational turn, with no training and no retriever-specific tuning. Findings of EMNLP 2026.">
+<meta name="keywords" content="conversational search, conversational query reformulation, CQR, training-free, retrieval, RRF, EMNLP 2026">
+<meta property="og:title" content="CompCQR: Compositional Query Generation for Training-Free Conversational Search">
+<meta property="og:description" content="325 query rewrites from 3 LLM calls. No training, no retriever-specific tuning. Findings of EMNLP 2026.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://yunahjang.github.io/compcqr/">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%234f46e5'/%3E%3Crect x='12' y='16' width='16' height='12' rx='3' fill='white'/%3E%3Crect x='32' y='16' width='20' height='12' rx='3' fill='%23a5b4fc'/%3E%3Crect x='12' y='36' width='24' height='12' rx='3' fill='%23a5b4fc'/%3E%3Crect x='40' y='36' width='12' height='12' rx='3' fill='white'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,600&display=swap" rel="stylesheet">
+<style>
+
+  :root {
+    --sans: "Plus Jakarta Sans", -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+    --band: #e8e6f0;
+    --bg: #ffffff;
+    --bg-soft: #f4f3f7;
+    --bg-tint: #f4f3f7;
+    --card: #ffffff;
+    --ink: #1d1b22;
+    --ink-2: #4a4753;
+    --muted: #7c7887;
+    --line: #e3e0ea;
+    --frame: #4e4470;
+    --purple: #4e4470;
+    --teal: #2a8a8c;
+    --teal-bg: #e8f3f3;
+    --crimson: #c74c68;
+    --crimson-l: #e9a3b2;
+    --amber: #e0a43a;
+    --gray: #c9c6d0;
+    --accent: #c74c68;
+    --accent-ink: #ffffff;
+    --accent-soft: #fbeef1;
+    --bad: #c74c68;
+    --c-orig: #6b6777;
+    --c-human: #2a8a8c;
+    --c-style: #4e4470;
+    --c-sent: #c74c68;
+    --c-err: #e0a43a;
+    --hl-add: #fbeef1;
+    --hl-add-ink: #c74c68;
+    --shadow: none;
+    --radius: 0px;
+    --maxw: 1080px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--sans);
+    font-size: 17px; line-height: 1.65; -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+  section { padding: 72px 0; }
+  section.alt { background: var(--bg-soft); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  h2 { font-size: 30px; line-height: 1.2; letter-spacing: -.02em; margin: 0 0 8px; }
+  h3 { font-size: 19px; margin: 0 0 6px; letter-spacing: -.01em; }
+  .eyebrow { font-size: 12.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); margin-bottom: 10px; }
+  .lede { color: var(--ink-2); max-width: 760px; margin: 0 0 32px; }
+  .muted { color: var(--muted); }
+  .small { font-size: 14px; }
+
+  /* nav */
+  nav.top {
+    position: sticky; top: 0; z-index: 20; backdrop-filter: saturate(1.4) blur(10px);
+    background: color-mix(in srgb, var(--bg) 82%, transparent); border-bottom: 1px solid var(--line);
+  }
+  nav.top .wrap { display: flex; align-items: center; justify-content: space-between; height: 56px; gap: 16px; }
+  nav.top .brand { font-weight: 800; color: var(--ink); letter-spacing: -.01em; white-space: nowrap; }
+  nav.top .links { display: flex; gap: 22px; font-size: 14.5px; overflow-x: auto; scrollbar-width: none; }
+  nav.top .links a { color: var(--muted); white-space: nowrap; }
+  nav.top .links a:hover { color: var(--ink); text-decoration: none; }
+  #themeBtn { border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 3px; width: 34px; height: 34px; cursor: pointer; flex: none; display: grid; place-items: center; padding: 0; }
+
+  /* hero */
+  header.hero { padding: 72px 0 40px; text-align: center; background:
+      radial-gradient(1200px 400px at 50% -120px, var(--accent-soft), transparent 70%); }
+  .venue { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; color: var(--accent);
+    background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); padding: 6px 14px; border-radius: 3px; }
+  .venue .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+  h1 { font-size: clamp(34px, 6vw, 60px); line-height: 1.05; letter-spacing: -.035em; margin: 22px auto 12px; font-weight: 800; }
+  h1 .q { color: var(--accent); }
+  .subtitle { font-size: clamp(18px, 2.6vw, 24px); color: var(--ink-2); font-weight: 500; margin: 0 0 28px; letter-spacing: -.01em; }
+  .authors { font-size: 18px; margin: 0 0 6px; }
+  .authors span { white-space: nowrap; margin: 0 8px; }
+  .authors sup, .affil sup { color: var(--muted); font-weight: 500; }
+  .affil { color: var(--muted); font-size: 15px; margin: 0 0 4px; }
+  .affil span { margin: 0 10px; white-space: nowrap; }
+  .btns { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 3px; font-weight: 600; font-size: 15px;
+    background: var(--ink); color: var(--bg); border: 1px solid var(--ink); transition: transform .15s ease, opacity .15s; }
+  .btn:hover { text-decoration: none; transform: translateY(-1px); opacity: .92; }
+  .btn.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+  .btn svg { width: 17px; height: 17px; }
+
+  /* teaser */
+  .teaser { margin-top: 48px; text-align: left; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+  .teaser .card { padding: 26px; }
+  .teaser-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  .teaser-head h3 { font-size: 17px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+  .chip { --c: var(--c-orig); border: 1.5px solid color-mix(in srgb, var(--c) 45%, transparent); color: var(--c); background: transparent;
+    border-radius: 3px; padding: 6px 13px; font: 600 13.5px/1 var(--sans); cursor: pointer; transition: all .15s; }
+  .chip:hover { background: color-mix(in srgb, var(--c) 10%, transparent); }
+  .chip[aria-pressed="true"] { background: var(--c); color: #fff; border-color: var(--c); }
+  .chip .cat { opacity: .7; font-weight: 500; margin-right: 4px; }
+  .qbox { border-radius: 3px; background: var(--bg-soft); border: 1px solid var(--line); padding: 18px 20px; }
+  .qrow { display: grid; grid-template-columns: 92px 1fr; gap: 12px; align-items: baseline; }
+  .qrow + .qrow { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
+  .qlabel { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .qtext { font-size: 19px; font-weight: 500; color: var(--ink); }
+  .qtext mark { background: var(--hl-add); color: var(--hl-add-ink); border-radius: 4px; padding: 0 3px; }
+  .qtext .gone { text-decoration: line-through; color: var(--muted); }
+  .note { font-size: 13px; color: var(--muted); margin-top: 12px; }
+  .stats3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 18px; }
+  .stat { border: 1px solid var(--line); border-radius: 3px; padding: 16px 18px; background: var(--card); }
+  .stat .k { font-size: 12.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .stat .v { font-size: 30px; font-weight: 800; letter-spacing: -.03em; color: var(--bad); line-height: 1.2; margin: 6px 0 4px; }
+  .stat .v.txt { font-size: 21px; padding: 5px 0 4px; }
+  .stat .d { font-size: 14px; color: var(--ink-2); line-height: 1.45; }
+
+  /* tldr */
+  .tldr { border-left: 4px solid var(--accent); background: var(--accent-soft); border-radius: 0; padding: 18px 22px; margin: 0 0 28px; font-size: 18px; }
+  .tldr b { color: var(--accent); }
+  .prose p { margin: 0 0 16px; color: var(--ink-2); max-width: 820px; }
+  .prose strong { color: var(--ink); }
+
+  /* numbers strip */
+  .nums { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 0 0 36px; }
+  .num { padding: 20px; border-radius: 3px; background: var(--card); border: 1px solid var(--line); }
+  .num .n { font-size: 34px; font-weight: 800; letter-spacing: -.03em; line-height: 1; }
+  .num .l { font-size: 14px; color: var(--muted); margin-top: 8px; line-height: 1.4; }
+
+  /* taxonomy */
+  .tax { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .tcard { padding: 20px; border-radius: 3px; background: var(--card); border: 1px solid var(--line); border-top: 4px solid var(--c); }
+  .tcard .tag { font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--c); }
+  .tcard h3 { margin-top: 6px; }
+  .tcard ul { margin: 8px 0 0; padding-left: 18px; color: var(--ink-2); font-size: 15px; }
+  .tcard li { margin-bottom: 4px; }
+  .datasets { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+  .ds { padding: 18px 20px; border-radius: 3px; border: 1px solid var(--line); background: var(--card); }
+  .ds .pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .pill { font-size: 14px; padding: 4px 11px; border-radius: 3px; background: var(--bg-soft); border: 1px solid var(--line); color: var(--ink-2); }
+
+  /* axes */
+  .axes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .axis { padding: 24px; }
+  .axis .ic { width: 42px; height: 42px; border-radius: 3px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); margin-bottom: 14px; }
+  .axis .ic svg { width: 22px; height: 22px; }
+  .axis p { color: var(--ink-2); font-size: 15.5px; margin: 0 0 12px; }
+  .metric { font-size: 14.5px; padding: 8px 0; border-top: 1px solid var(--line); color: var(--ink-2); }
+  .metric b { color: var(--ink); }
+  .dir { font-size: 12px; color: var(--muted); white-space: nowrap; }
+
+  /* chart */
+  .chart-card { padding: 26px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; margin-bottom: 22px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 3px; padding: 3px; background: var(--bg-soft); flex-wrap: wrap; }
+  .seg button { border: 0; background: transparent; color: var(--muted); font: 600 14px var(--sans); padding: 7px 12px; border-radius: 3px; cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+  .ctl-label { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-right: 8px; }
+  .bars { display: grid; gap: 9px; }
+  .bar-row { display: grid; grid-template-columns: 112px 1fr 104px; gap: 12px; align-items: center; font-size: 14.5px; }
+  .bar-row .lab { color: var(--ink-2); font-weight: 500; }
+  .track { position: relative; height: 26px; background: var(--bg-soft); border-radius: 3px; overflow: visible; }
+  .fill { position: absolute; inset: 0 auto 0 0; border-radius: 3px; background: var(--c); transition: width .5s cubic-bezier(.2,.8,.2,1); }
+  .ref { position: absolute; top: -4px; bottom: -4px; width: 0; border-left: 2px dashed var(--ink); opacity: .55; transition: left .5s cubic-bezier(.2,.8,.2,1); }
+  .val { font-variant-numeric: tabular-nums; font-weight: 700; text-align: right; white-space: nowrap; }
+  .val .dl { font-weight: 600; font-size: 13px; margin-left: 6px; }
+  .val .dl.neg { color: var(--bad); }
+  .val .dl.pos { color: var(--c-sent); }
+  .chart-foot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 18px; font-size: 13px; color: var(--muted); }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+
+  /* findings */
+  .findings { counter-reset: f; display: grid; gap: 14px; }
+  .finding { display: grid; grid-template-columns: 44px 1fr; gap: 16px; padding: 20px 22px; }
+  .finding::before { counter-increment: f; content: counter(f); width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
+    background: var(--ink); color: var(--bg); font-weight: 800; }
+  .finding h3 { margin-bottom: 2px; }
+  .finding p { margin: 0; color: var(--ink-2); font-size: 15.5px; }
+
+  /* setup */
+  .setup { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .setup .card { padding: 20px 22px; }
+  .setup .k { font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  .setup .item { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 15.5px; }
+  .setup .item:first-of-type { border-top: 0; }
+  .setup .item span:last-child { color: var(--muted); font-size: 14px; text-align: right; }
+
+  /* bibtex */
+  .bib { position: relative; }
+  .bib pre { margin: 0; padding: 22px 24px; overflow-x: auto; font: 14px/1.7 var(--mono); color: var(--ink-2); background: var(--bg-soft); border-radius: var(--radius); border: 1px solid var(--line); }
+  #copyBtn { position: absolute; top: 12px; right: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 3px; padding: 6px 12px; font: 600 13px var(--sans); cursor: pointer; }
+
+  footer { padding: 40px 0 56px; color: var(--muted); font-size: 14px; text-align: center; }
+  footer .logos { margin-bottom: 8px; color: var(--ink-2); font-weight: 600; }
+
+  @media (max-width: 860px) {
+    .tax { grid-template-columns: 1fr 1fr; }
+    .axes, .setup { grid-template-columns: 1fr; }
+    .nums { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 640px) {
+    body { font-size: 16px; }
+    .wrap { padding: 0 16px; }
+    section { padding: 52px 0; }
+    header.hero { padding: 44px 0 28px; }
+    nav.top .links { display: none; }
+    .stats3, .datasets, .tax { grid-template-columns: 1fr; }
+    .teaser .card, .chart-card { padding: 18px; }
+    .qrow { grid-template-columns: 1fr; gap: 2px; }
+    .qtext { font-size: 17px; }
+    .bar-row { grid-template-columns: 82px 1fr 84px; gap: 8px; font-size: 13.5px; }
+    .val .dl { display: block; margin: 0; font-size: 12px; line-height: 1.1; }
+    .finding { grid-template-columns: 1fr; gap: 10px; }
+    h2 { font-size: 25px; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
+
+  /* ---- CompCQR additions ---- */
+  :root { --c-oq: var(--c-orig); --c-mq: var(--c-style); --c-ma: var(--c-sent); --c-mq2: var(--c-human); --c-ma2: var(--c-err); }
+  .comp-chips { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 16px; }
+  .comp { --c: var(--c-oq); text-align: left; border: 1.5px solid color-mix(in srgb, var(--c) 40%, transparent); border-radius: 3px;
+    background: color-mix(in srgb, var(--c) 7%, var(--card)); padding: 10px 12px; cursor: pointer; font: inherit; color: var(--ink); transition: all .15s; }
+  .comp:hover:not(:disabled) { transform: translateY(-1px); border-color: var(--c); }
+  .comp:disabled { opacity: .38; cursor: default; }
+  .comp .sym { display: inline-block; font: 700 12.5px/1 var(--mono); color: #fff; background: var(--c); padding: 4px 7px; border-radius: 3px; }
+  .comp .nm { display: block; font-size: 11.5px; color: var(--muted); margin-top: 7px; font-weight: 600; letter-spacing: .02em; }
+  .comp .tx { display: block; font-size: 14px; margin-top: 2px; line-height: 1.35; }
+  .builder { border-radius: 3px; background: var(--bg-soft); border: 1px solid var(--line); padding: 16px 18px; }
+  .builder-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .rule { display: flex; flex-wrap: wrap; gap: 6px; min-height: 30px; align-items: center; }
+  .seg-tok { --c: var(--c-oq); font: 700 13px/1 var(--mono); color: #fff; background: var(--c); border: 0; border-radius: 3px; padding: 7px 10px; cursor: pointer; }
+  .seg-tok:hover { opacity: .85; }
+  .plus { color: var(--muted); font-weight: 700; }
+  .empty { color: var(--muted); font-size: 14px; }
+  .rid { font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .rid b { color: var(--accent); font-variant-numeric: tabular-nums; }
+  .composed { font-size: 17px; line-height: 1.6; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line); color: var(--ink); min-height: 40px; }
+  .composed span { border-bottom: 3px solid var(--c); padding-bottom: 1px; }
+  .composed .j { border: 0; color: var(--muted); margin: 0 4px; font-family: var(--mono); }
+  .mini-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+  .mini { border: 1px solid var(--line); background: var(--card); color: var(--ink-2); border-radius: 3px; padding: 6px 11px; font: 600 13px var(--sans); cursor: pointer; }
+  .mini:hover { color: var(--ink); border-color: var(--muted); }
+  .stats4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 18px; }
+  .stats4 .v { color: var(--ink); }
+  .stats4 .v.acc { color: var(--accent); }
+
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .step { padding: 20px 22px; position: relative; }
+  .step .no { font: 700 12px/1 var(--mono); color: var(--muted); letter-spacing: .05em; }
+  .step h3 { margin: 8px 0 6px; }
+  .step p { margin: 0; font-size: 15px; color: var(--ink-2); }
+  .badge { position: absolute; top: 16px; right: 16px; font-size: 11.5px; font-weight: 700; letter-spacing: .04em; padding: 4px 9px; border-radius: 3px; }
+  .badge.llm { background: var(--accent-soft); color: var(--accent); }
+  .badge.free { background: var(--bg-soft); color: var(--muted); border: 1px solid var(--line); }
+
+  .combo { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; align-items: end; height: 200px; margin: 8px 0 10px; }
+  .combo .col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 6px; }
+  .combo .b { width: 100%; max-width: 92px; border-radius: 8px 8px 3px 3px; background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 65%, var(--c-human))); }
+  .combo .n { font-weight: 800; font-size: 20px; font-variant-numeric: tabular-nums; }
+  .combo-x { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; text-align: center; font-size: 13.5px; color: var(--muted); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .two .card { padding: 24px; }
+  .order-demo { display: grid; gap: 10px; margin-top: 14px; }
+  .od { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .od .arrow { color: var(--muted); margin: 0 6px; }
+  .od .res { font-size: 14px; color: var(--ink-2); }
+
+  .bars2 { display: grid; gap: 14px; }
+  .m-row { display: grid; grid-template-columns: 90px 1fr; gap: 14px; align-items: center; }
+  .m-row .lab { font-weight: 600; color: var(--ink-2); font-size: 14.5px; }
+  .pair { display: grid; gap: 5px; }
+  .pb { display: grid; grid-template-columns: 1fr 52px; gap: 10px; align-items: center; }
+  .pb .track { height: 22px; }
+  .pb .fill { border-radius: 3px; }
+  .pb .val { font-size: 14px; }
+  .chips-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .disabled-seg { opacity: .4; pointer-events: none; }
+
+  @media (max-width: 860px) {
+    .comp-chips { grid-template-columns: repeat(3, 1fr); }
+    .steps, .two { grid-template-columns: 1fr; }
+    .stats4 { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 640px) {
+    .comp-chips { grid-template-columns: 1fr 1fr; }
+    .stats4 { grid-template-columns: 1fr 1fr; }
+    .combo { height: 150px; gap: 8px; }
+    .combo-x { gap: 8px; font-size: 12px; }
+    .m-row { grid-template-columns: 1fr; gap: 6px; }
+    .composed { font-size: 15.5px; }
+  }
+  /* ---------- poster tone ---------- */
+  body { font-size: 17px; line-height: 1.6; }
+  a { color: var(--crimson); }
+  nav.top .brand { font-family: var(--mono); font-weight: 700; }
+  #themeBtn { display: none; }
+  header.band { background: var(--band); color: var(--ink); padding: 48px 0 36px; }
+  .head-grid { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 36px; align-items: center; }
+  .head-grid > div { min-width: 0; }
+  .venue2 { display: inline-block; font-family: var(--mono); font-size: 14px; font-weight: 500; color: var(--purple); border: 1.5px solid var(--purple); padding: 4px 12px; margin-bottom: 18px; }
+  header.band h1 { font-family: var(--mono); font-weight: 700; font-size: clamp(40px, 5.6vw, 68px); line-height: 1; margin: 0 0 14px; letter-spacing: -.01em; }
+  header.band .sub { font-family: var(--mono); font-weight: 600; font-size: clamp(17px, 2.4vw, 28px); line-height: 1.25; margin: 0 0 20px; }
+  header.band .authors { font-size: clamp(17px, 1.9vw, 22px); margin: 0 0 6px; }
+  header.band .authors sup, header.band .affil sup { font-size: .62em; color: inherit; }
+  header.band .affil { color: var(--ink-2); font-size: 16px; margin: 0; }
+  header.band .affil span { display: inline-block; margin-right: 16px; white-space: nowrap; }
+  header.band .affil .mail { font-family: var(--mono); }
+  header.band .btns { justify-content: flex-start; margin-top: 24px; }
+  header.band .btn { font-family: var(--mono); background: var(--purple); color: #fff; border: 2px solid var(--purple); border-radius: 3px; padding: 8px 16px; }
+  header.band .btn.ghost { background: transparent; color: var(--purple); }
+  .logos { display: grid; grid-template-columns: auto auto; gap: 12px 16px; align-items: center; justify-items: start; }
+  .logos img { display: block; height: auto; }
+  .logos .emnlp { width: 210px; grid-column: 1 / -1; }
+  .logos .milab { width: 132px; } .logos .snu { width: 50px; justify-self: end; }
+  .logos .lg { width: 180px; grid-column: 1 / -1; }
+  .strip { background: var(--accent-soft); border-top: 2px solid var(--crimson); border-bottom: 2px solid var(--crimson); }
+  .strip .wrap { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1.15fr; }
+  .strip .cell { padding: 16px 18px; display: flex; align-items: center; justify-content: center; gap: 10px; border-left: 2px solid var(--crimson-l); font-size: 17px; font-weight: 600; line-height: 1.25; }
+  .strip .cell:first-child { border-left: 0; justify-content: flex-start; padding-left: 0; font-size: 18px; }
+  .strip .n { font-family: var(--mono); font-size: 32px; font-weight: 700; color: var(--crimson); }
+  .teaser-wrap { margin-top: 36px; }
+  .teaser { margin-top: 0; }
+  .card { border: 2px solid var(--frame); }
+  .stat, .num, .ds, .comp { border-width: 1.5px; }
+  .eyebrow { font-family: var(--mono); font-weight: 500; font-size: 17px; letter-spacing: 0; text-transform: none; color: var(--crimson); margin-bottom: 4px; }
+  h2 { font-weight: 700; font-size: 34px; letter-spacing: -.01em; color: var(--purple); }
+  section:nth-of-type(3n+2) h2 { color: var(--teal); }
+  section:nth-of-type(3n) h2 { color: var(--crimson); }
+  section.alt { background: var(--bg-soft); }
+  .tldr { border-left: 0; background: transparent; padding: 0; display: grid; grid-template-columns: auto 1fr; gap: 16px; font-size: 19px; font-weight: 600; line-height: 1.45; }
+  .tldr b { font-family: var(--mono); font-weight: 500; color: var(--crimson); }
+  .comp .sym, .seg-tok, .rid, .mini { font-family: var(--mono); }
+  .composed { font-family: var(--sans); }
+  .step .no { font-family: var(--mono); }
+  .badge.llm { background: var(--amber); color: var(--ink); border-radius: 999px; }
+  .badge.free { border-radius: 999px; }
+  .combo .b { background: var(--purple); }
+  .combo .col:last-child .b { background: var(--crimson); }
+  .seg button { font-family: var(--mono); font-weight: 500; }
+  .bib pre { background: var(--bg-soft); border: 2px solid var(--frame); color: var(--ink); }
+  #copyBtn { font-family: var(--mono); border: 1.5px solid var(--frame); color: var(--purple); }
+  footer.band2 { background: var(--band); border-top: 2px solid var(--purple); padding: 22px 0 26px; text-align: left; color: var(--ink-2); }
+  footer.band2 .links { font-family: var(--mono); color: var(--ink); margin-top: 6px; }
+  /* reorder example (from the poster) */
+  .reo { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+  .reo > * { min-width: 0; }
+  .reo .h { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+  .doc { background: var(--bg-soft); padding: 6px 10px; font-size: 14.5px; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .doc.gold { border: 2px solid var(--teal); background: #fff; display: flex; justify-content: space-between; gap: 6px; padding: 4px 8px; }
+  .doc.gold span:first-child { overflow: hidden; text-overflow: ellipsis; }
+  .goldtag { font-size: 11px; font-weight: 700; background: var(--teal); color: #fff; padding: 1px 6px; flex: none; }
+  .pct { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+  .pct .n { font-size: 44px; font-weight: 800; color: var(--teal); line-height: 1; }
+  .pct span:last-child { font-size: 14.5px; line-height: 1.35; color: var(--ink-2); }
+  /* baseline comparison (from the poster) */
+  .vs { margin-top: 18px; padding: 24px 26px; }
+  .vs-head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: baseline; }
+  .vs-head h3 { margin: 0; }
+  .legend2 { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14.5px; color: var(--ink-2); margin: 10px 0 4px; }
+  .legend2 i { display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: -1px; }
+  .res4 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 28px; margin-top: 10px; }
+  .res4 > * { min-width: 0; }
+  .res4 h4 { margin: 0 0 4px; font-size: 16px; }
+  .hb { display: grid; grid-template-columns: 1fr 46px; gap: 10px; align-items: center; margin: 4px 0; }
+  .hb .tr { height: 18px; background: var(--bg-soft); }
+  .hb .tr i { display: block; height: 100%; }
+  .hb span { font-size: 15.5px; font-variant-numeric: tabular-nums; }
+  .hb.hot span { color: var(--crimson); font-weight: 700; }
+  @media (max-width: 900px) {
+    .head-grid { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 640px) {
+    header.band { padding: 30px 0 24px; }
+    .logos .emnlp { width: 170px; } .logos .lg { width: 150px; }
+    .strip .wrap { grid-template-columns: 1fr 1fr 1fr; }
+    .strip .cell { border-left: 0; padding: 10px 6px; flex-direction: column; gap: 0; font-size: 14px; text-align: center; }
+    .strip .cell:first-child { grid-column: 1 / -1; font-size: 16.5px; padding: 14px 0 4px; text-align: left; align-items: flex-start; }
+    .strip .n { font-size: 25px; }
+    .tldr { grid-template-columns: 1fr; gap: 2px; font-size: 17px; }
+    .res4 { grid-template-columns: 1fr; }
+    h2 { font-size: 27px; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="top">
+  <div class="wrap">
+    <a class="brand" href="#top">CompCQR</a>
+    <div class="links">
+      <a href="#abstract">Abstract</a>
+      <a href="#method">Method</a>
+      <a href="#results">Results</a>
+      <a href="#generalization">Generalization</a>
+      <a href="#bibtex">BibTeX</a>
+    </div>
+  </div>
+</nav>
+
+<header class="band" id="top">
+  <div class="wrap head-grid">
+    <div>
+      <span class="venue2">Findings of EMNLP 2026</span>
+      <h1>CompCQR</h1>
+      <p class="sub">Compositional Query Generation for Training-Free Conversational Search</p>
+      <p class="authors">Yunah Jang<sup>1</sup>, Kang-il Lee<sup>1</sup>, Joongbo Shin<sup>2</sup>, Kyomin Jung<sup>1†</sup></p>
+      <p class="affil"><span><sup>1</sup>Seoul National University</span><span><sup>2</sup>LG AI Research</span><span><sup>†</sup>Corresponding author</span><span class="mail">vn2209@snu.ac.kr</span></p>
+    <div class="btns">
+      <a class="btn" href="https://arxiv.org/pdf/2609.14646">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>
+        Paper
+      </a>
+      <a class="btn" href="https://arxiv.org/abs/2609.14646">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/></svg>
+        arXiv
+      </a>
+      <a class="btn" href="https://github.com/YunahJang/CompCQR">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.71 1.26 3.37.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.68 0-1.25.45-2.28 1.18-3.08-.12-.29-.51-1.46.11-3.04 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.62 1.58.23 2.75.11 3.04.74.8 1.18 1.83 1.18 3.08 0 4.41-2.69 5.38-5.25 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5z"/></svg>
+        Code
+      </a>
+      <a class="btn ghost" href="#bibtex">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 11H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v7a5 5 0 0 1-5 5M20 11h-4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v7a5 5 0 0 1-5 5"/></svg>
+        BibTeX
+      </a>
+    </div>
+
+    </div>
+    <div class="logos" aria-label="EMNLP 2026, Machine Intelligence Lab, Seoul National University, LG AI Research">
+      <img class="emnlp" src="assets/emnlp.png" alt="EMNLP 2026 Budapest">
+      <img class="milab" src="assets/milab.png" alt="Machine Intelligence Lab, Seoul National University">
+      <img class="snu" src="assets/snu.png" alt="Seoul National University">
+      <img class="lg" src="assets/lg.png" alt="LG AI Research">
+    </div>
+  </div>
+</header>
+
+<div class="strip">
+  <div class="wrap">
+    <div class="cell"><span><span style="color:var(--crimson)">Compositionally</span> recombine a few LLM-made pieces — no training needed.</span></div>
+    <div class="cell"><span class="n">325</span>queries</div>
+    <div class="cell"><span class="n">3</span>LLM calls</div>
+    <div class="cell"><span class="n">+22.5%</span><span>MRR over<br>prior best</span></div>
+  </div>
+</div>
+
+<div class="wrap teaser-wrap">
+    <!-- Teaser: composer -->
+    <div class="teaser">
+      <div class="card">
+        <div class="teaser-head">
+          <h3>After “Who directed <i>Inception</i>?”, the user asks “What else did he make?”. Compose a query:</h3>
+          <span class="muted small">Click components in order.</span>
+        </div>
+        <div class="comp-chips" id="compChips"></div>
+        <div class="builder">
+          <div class="builder-top">
+            <div class="rule" id="rule"></div>
+            <div class="mini-btns">
+              <button class="mini" data-preset="ma,oq">ma + oq</button>
+              <button class="mini" data-preset="oq,ma">oq + ma</button>
+              <button class="mini" id="randBtn">Random</button>
+              <button class="mini" id="resetBtn">Clear</button>
+            </div>
+          </div>
+          <div class="rid" id="rid"></div>
+          <div class="composed" id="composed" aria-live="polite"></div>
+        </div>
+        <div class="note">Each ordered choice is one of the 325 variations CompCQR sends to the retriever; <code>ma+oq</code> and <code>oq+ma</code> are different queries.</div>
+      </div>
+    </div>
+</div>
+
+<section id="abstract">
+  <div class="wrap">
+    <div class="eyebrow">01 Abstract</div>
+    <h2>Don't bet everything on one rewrite</h2>
+    <div class="tldr"><b>TL;DR</b><span>Retrievers are sensitive to the <em>order</em> of content in a query. CompCQR exploits this: a few LLM-generated components are composed into hundreds of ordered queries, and retrieval consensus plus one LLM selection step pick the passage the user wanted.</span></div>
+    <div class="prose">
+      <p>Multi-turn interactions with LLMs are becoming increasingly common in information-seeking scenarios. However, user queries are often ambiguous and context-dependent, making them ill-suited for direct use as retriever queries. Conversational query reformulation (CQR) addresses this issue by rewriting the current utterance into a stand-alone query grounded in the dialogue history. Recent LLM-based CQR approaches achieve strong performance; however, their repeated LLM invocations and misalignment with downstream retrievers remain challenges.</p>
+      <p>In this work, we begin from the observation that <strong>retrievers are highly sensitive to content ordering</strong>: simply reordering the same content can lead to changes in retrieval coverage and performance. Based on this, we propose a novel training-free method that generates a very large number of queries with minimal LLM usage by <strong>compositionally combining a small set of atomic components</strong>. We further apply LLM reasoning to construct a high-quality document set that balances precision and recall while capturing the user's core intent.</p>
+      <p>Our framework generalizes across both open- and closed-source LLMs as well as dense and sparse retrievers. It achieves strong performance on four widely used conversational benchmarks, with up to <strong>22.5% relative MRR improvement</strong> over the previous state-of-the-art baseline with far fewer LLM calls.</p>
+    </div>
+  </div>
+</section>
+
+<section class="alt" id="method">
+  <div class="wrap">
+    <div class="eyebrow">02 Method</div>
+    <h2>Decompose, compose, fuse, select</h2>
+    <p class="lede">Two LLM calls produce five atomic components. Composition turns them into 325 ordered queries for free. Fusion finds what the queries agree on, and a final LLM call picks the passage.</p>
+
+    <div class="steps">
+      <div class="card step"><span class="badge llm">LLM call</span><div class="no">STEP 0</div><h3>Rewrite + answer</h3><p>From the dialogue history, the LLM writes a stand-alone rewrite <code>mq</code> and a hypothetical answer <code>ma</code>.</p></div>
+      <div class="card step"><span class="badge llm">LLM call</span><div class="no">STEP 1</div><h3>Follow-up + answer</h3><p>A follow-up query <code>mq2</code> and its answer <code>ma2</code> widen what the turn might be asking.</p></div>
+      <div class="card step"><span class="badge free">no LLM</span><div class="no">STEP 2</div><h3>Compose</h3><p>Every ordered subset of <code>{oq, mq, ma, mq2, ma2}</code> becomes one query: 325 per turn.</p></div>
+      <div class="card step"><span class="badge free">no LLM</span><div class="no">STEP 3</div><h3>Retrieve</h3><p>Each variation queries an off-the-shelf retriever, dense (ANCE) or sparse (BM25), with no tuning.</p></div>
+      <div class="card step"><span class="badge free">no LLM</span><div class="no">STEP 4</div><h3>Fuse</h3><p>Reciprocal rank fusion with k = 0 rewards top-1 consensus across the 325 rankings and forms a candidate pool.</p></div>
+      <div class="card step"><span class="badge llm">LLM call</span><div class="no">STEP 5–6</div><h3>Select + rank</h3><p>The LLM reads the top-k passages and selects one. It goes to rank 1, and the rest keep their fused order.</p></div>
+    </div>
+
+    <div class="two" style="margin-top:16px">
+      <div class="card">
+        <h3>Order is a free source of diversity</h3>
+        <p class="muted" style="margin:0 0 4px;font-size:15.5px">Same pieces, different order, different top-3. CompCQR enumerates orders instead of asking the LLM for more rewrites.</p>
+        <div class="reo">
+          <div>
+            <div class="h"><span class="seg-tok" style="--c:var(--c-mq);cursor:default">mq</span><span class="seg-tok" style="--c:var(--c-ma);cursor:default">ma</span></div>
+            <div class="doc">Interstellar (film)</div>
+            <div class="doc">The Dark Knight trilogy</div>
+            <div class="doc gold"><span>Christopher Nolan fil…</span><span class="goldtag">gold</span></div>
+          </div>
+          <div>
+            <div class="h"><span class="seg-tok" style="--c:var(--c-ma);cursor:default">ma</span><span class="seg-tok" style="--c:var(--c-mq);cursor:default">mq</span></div>
+            <div class="doc">The Dark Knight trilogy</div>
+            <div class="doc">Batman in film</div>
+            <div class="doc">Interstellar (film)</div>
+          </div>
+        </div>
+        <div class="pct"><span class="n">28%</span><span>of top-10 docs change from reordering alone (ANCE).</span></div>
+      </div>
+      <div class="card">
+        <h3>325 variations from 5 components</h3>
+        <div class="combo" id="combo"></div>
+        <div class="combo-x"><span>1 comp.</span><span>2 comp.</span><span>3 comp.</span><span>4 comp.</span><span>5 comp.</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="results">
+  <div class="wrap">
+    <div class="eyebrow">03 Results</div>
+    <h2>Strong retrieval on four benchmarks</h2>
+    <p class="lede">CompCQR with an open-weight model (Llama-3.1-8B) and a closed one (GPT-4.1-mini), on dense and sparse retrievers.</p>
+
+    <div class="card chart-card">
+      <div class="controls">
+        <div><span class="ctl-label">Dataset</span><span class="seg" id="segDs"></span></div>
+        <div id="retWrap"><span class="ctl-label">Retriever</span><span class="seg" id="segRet"></span></div>
+      </div>
+      <div class="bars2" id="bars2"></div>
+      <div class="chart-foot">
+        <div class="legend">
+          <span><i style="background:var(--teal)"></i>Llama-3.1-8B</span>
+          <span><i style="background:var(--purple)"></i>GPT-4.1-mini</span>
+        </div>
+        <span>From Tables 2–3 of the paper. QReCC test, TopiOCQA dev; CAsT reported with ANCE.</span>
+      </div>
+    </div>
+    <div class="card vs">
+      <div class="vs-head"><h3>Training-free, yet beats trained rewriters</h3><span class="muted small">MRR · GPT-4.1-mini</span></div>
+      <div class="legend2"><span><i style="background:var(--gray)"></i>ICR (trained)</span><span><i style="background:var(--purple)"></i>LLM4CS</span><span><i style="background:var(--crimson)"></i>CompCQR</span></div>
+      <div class="res4" id="res4"></div>
+      <p class="small" style="margin:12px 0 0">CAsT-19 / 20: <b>75.8 / 78.3</b> MRR vs. LLM4CS 73.3 / 77.2.</p>
+    </div>
+    <p class="muted small" style="margin-top:14px">Baselines compared in the paper: T5QR, ConvGQR, IterCQR, LLM4CS, AdaCQR, CHIQ-Fusion, AdaRewriter and ConvSearch-R1.</p>
+  </div>
+</section>
+
+<section class="alt" id="generalization">
+  <div class="wrap">
+    <div class="eyebrow">04 Generalization</div>
+    <h2>Plug in any LLM, any retriever</h2>
+    <p class="lede">Nothing in CompCQR is trained, so it transfers across model families and retrieval paradigms. A new SentenceTransformer-compatible encoder needs only a config entry.</p>
+    <div class="setup">
+      <div class="card">
+        <div class="k">LLMs</div>
+        <div class="item"><span>Llama-3.1-8B-Instruct</span><span>open, main</span></div>
+        <div class="item"><span>GPT-4.1-mini</span><span>closed, main</span></div>
+        <div class="item"><span>Qwen2.5-72B</span><span>open, additional</span></div>
+        <div class="item"><span>Llama-3.3-70B</span><span>open, additional</span></div>
+      </div>
+      <div class="card">
+        <div class="k">Retrievers</div>
+        <div class="item"><span>ANCE</span><span>dense, main</span></div>
+        <div class="item"><span>BM25</span><span>sparse, main</span></div>
+        <div class="item"><span>GTR</span><span>dense, additional</span></div>
+        <div class="item"><span>Contriever</span><span>dense, additional</span></div>
+      </div>
+      <div class="card">
+        <div class="k">Benchmarks</div>
+        <div class="item"><span>QReCC</span><span>test</span></div>
+        <div class="item"><span>TopiOCQA</span><span>dev</span></div>
+        <div class="item"><span>CAsT-19</span><span>TREC</span></div>
+        <div class="item"><span>CAsT-20</span><span>TREC</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="bibtex">
+  <div class="wrap">
+    <div class="eyebrow">05 Citation</div>
+    <h2>BibTeX</h2>
+    <p class="lede">If you find this work useful, please cite:</p>
+    <div class="bib">
+      <button id="copyBtn">Copy</button>
+<pre id="bibText">@inproceedings{jang2026compcqr,
+  title     = {CompCQR: Compositional Query Generation for Training-Free Conversational Search},
+  author    = {Jang, Yunah and Lee, Kang-il and Shin, Joongbo and Jung, Kyomin},
+  booktitle = {Findings of the Association for Computational Linguistics: EMNLP 2026},
+  year      = {2026}
+}</pre>
+    </div>
+  </div>
+</section>
+
+<footer class="band2">
+  <div class="wrap">
+    <div>Code is released under the MIT License. Questions? <a href="https://github.com/YunahJang/CompCQR/issues">Open an issue</a>.</div>
+    <div class="links"><a href="https://github.com/YunahJang/CompCQR">github.com/YunahJang/CompCQR</a> · <a href="https://arxiv.org/abs/2609.14646">arXiv:2609.14646</a></div>
+  </div>
+</footer>
+
+<script>
+(function () {
+
+  // ---------- composer ----------
+  var COMP = {
+    oq:  { name: 'original query',   text: 'What else did he make?' },
+    mq:  { name: 'machine query',    text: 'What other films did Christopher Nolan direct?' },
+    ma:  { name: 'machine answer',   text: 'Nolan also directed Interstellar and The Dark Knight…' },
+    mq2: { name: 'follow-up query',  text: "What is Christopher Nolan's most recent film?" },
+    ma2: { name: 'follow-up answer', text: 'Oppenheimer (2023), a biopic…' }
+  };
+  var ORDER = ['oq', 'mq', 'ma', 'mq2', 'ma2'];
+  var SORTED = ORDER.slice().sort();           // same order as itertools over sorted(components)
+  var seq = ['ma', 'oq'];
+  var chipBox = document.getElementById('compChips');
+  ORDER.forEach(function (k) {
+    var b = document.createElement('button');
+    b.className = 'comp'; b.dataset.k = k; b.style.setProperty('--c', 'var(--c-' + k + ')');
+    b.innerHTML = '<span class="sym">' + k + '</span><span class="nm">' + COMP[k].name + '</span><span class="tx">' + COMP[k].text + '</span>';
+    b.addEventListener('click', function () { if (seq.indexOf(k) < 0) { seq.push(k); draw(); } });
+    chipBox.appendChild(b);
+  });
+  function P(n, r) { var p = 1; for (var i = 0; i < r; i++) p *= (n - i); return p; }
+  function ruleId(s) {   // 1-based id as produced by compcqr.variations.generate_rules
+    var n = SORTED.length, k = s.length, id = 0, used = [];
+    for (var j = 1; j < k; j++) id += P(n, j);
+    for (var i = 0; i < k; i++) {
+      var idx = SORTED.indexOf(s[i]), smaller = 0;
+      for (var q = 0; q < idx; q++) if (used.indexOf(SORTED[q]) < 0) smaller++;
+      id += smaller * P(n - i - 1, k - i - 1);
+      used.push(s[i]);
+    }
+    return id + 1;
+  }
+  function draw() {
+    var rule = document.getElementById('rule'); rule.innerHTML = '';
+    if (!seq.length) { rule.innerHTML = '<span class="empty">Pick a component above to start.</span>'; }
+    seq.forEach(function (k, i) {
+      if (i) { var p = document.createElement('span'); p.className = 'plus'; p.textContent = '+'; rule.appendChild(p); }
+      var t = document.createElement('button'); t.className = 'seg-tok'; t.textContent = k; t.title = 'Remove';
+      t.style.setProperty('--c', 'var(--c-' + k + ')');
+      t.addEventListener('click', function () { seq.splice(i, 1); draw(); });
+      rule.appendChild(t);
+    });
+    Array.prototype.forEach.call(chipBox.children, function (b) { b.disabled = seq.indexOf(b.dataset.k) >= 0; });
+    document.getElementById('rid').innerHTML = seq.length
+      ? 'Variation <b>#' + ruleId(seq) + '</b> of 325 · ' + seq.length + ' component' + (seq.length > 1 ? 's' : '')
+      : '&nbsp;';
+    document.getElementById('composed').innerHTML = seq.map(function (k) {
+      return '<span style="--c:var(--c-' + k + ')">' + COMP[k].text + '</span>';
+    }).join('<span class="j">+</span>');
+  }
+  document.querySelectorAll('[data-preset]').forEach(function (b) {
+    b.addEventListener('click', function () { seq = b.dataset.preset.split(','); draw(); });
+  });
+  document.getElementById('resetBtn').addEventListener('click', function () { seq = []; draw(); });
+  document.getElementById('randBtn').addEventListener('click', function () {
+    var pool = ORDER.slice(), k = 1 + Math.floor(Math.random() * 5); seq = [];
+    while (seq.length < k) seq.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+    draw();
+  });
+  draw();
+
+  // ---------- combinatorics bars ----------
+  var combo = document.getElementById('combo');
+  [5, 20, 60, 120, 120].forEach(function (n) {
+    var c = document.createElement('div'); c.className = 'col';
+    c.innerHTML = '<div class="n">' + n + '</div><div class="b" style="height:' + Math.max(4, n / 120 * 78) + '%"></div>';
+    combo.appendChild(c);
+  });
+
+  // ---------- results (Tables 2-3) ----------
+  var R = {
+    'QReCC':    { BM25: { llama: [55.7, 54.0, 75.8, 94.1], gpt: [67.0, 64.4, 83.4, 96.1] },
+                  ANCE: { llama: [50.8, 48.3, 67.8, 86.2], gpt: [61.5, 58.6, 74.6, 88.0] }, m: ['MRR', 'NDCG@3', 'R@10', 'R@100'] },
+    'TopiOCQA': { BM25: { llama: [29.3, 28.4, 49.3, 73.7], gpt: [41.3, 40.4, 60.3, 80.2] },
+                  ANCE: { llama: [42.3, 41.5, 62.2, 80.2], gpt: [48.7, 47.7, 67.5, 83.5] }, m: ['MRR', 'NDCG@3', 'R@10', 'R@100'] },
+    'CAsT-19':  { ANCE: { llama: [66.6, 12.1], gpt: [75.8, 13.2] }, m: ['MRR', 'R@10'] },
+    'CAsT-20':  { ANCE: { llama: [71.0, 16.2], gpt: [78.3, 16.7] }, m: ['MRR', 'R@10'] }
+  };
+  var st = { ds: 'QReCC', ret: 'BM25' };
+  function seg(id, opts, key) {
+    var el = document.getElementById(id); el.innerHTML = '';
+    opts.forEach(function (o) {
+      var b = document.createElement('button'); b.textContent = o; b.dataset.v = o;
+      b.addEventListener('click', function () { st[key] = o; render(); });
+      el.appendChild(b);
+    });
+  }
+  seg('segDs', Object.keys(R), 'ds');
+  seg('segRet', ['BM25', 'ANCE'], 'ret');
+  var box = document.getElementById('bars2');
+  function render() {
+    var d = R[st.ds], ret = d[st.ret] ? st.ret : 'ANCE';
+    document.getElementById('retWrap').classList.toggle('disabled-seg', !d.BM25);
+    [['segDs', st.ds], ['segRet', ret]].forEach(function (p) {
+      Array.prototype.forEach.call(document.getElementById(p[0]).children, function (b) { b.setAttribute('aria-pressed', b.dataset.v === p[1]); });
+    });
+    var row = d[ret]; box.innerHTML = '';
+    d.m.forEach(function (m, i) {
+      var r = document.createElement('div'); r.className = 'm-row';
+      r.innerHTML = '<div class="lab">' + m + '</div><div class="pair">' +
+        [['llama', '--teal', 'Llama-3.1-8B'], ['gpt', '--purple', 'GPT-4.1-mini']].map(function (x) {
+          return '<div class="pb" title="' + x[2] + '"><div class="track"><div class="fill" style="--c:var(' + x[1] + ');width:0"></div></div><div class="val">' + row[x[0]][i].toFixed(1) + '</div></div>';
+        }).join('') + '</div>';
+      box.appendChild(r);
+      var fills = r.querySelectorAll('.fill');
+      requestAnimationFrame(function () {
+        fills[0].style.width = row.llama[i] + '%'; fills[1].style.width = row.gpt[i] + '%';
+      });
+    });
+  }
+  render();
+
+  // ---------- baseline comparison ----------
+  var RES = [['QReCC · BM25', 58.4, 54.4, 67.0], ['TopiOCQA · BM25', 31.4, 31.3, 41.3], ['QReCC · ANCE', 49.5, 47.4, 61.5], ['TopiOCQA · ANCE', 42.1, 41.9, 48.7]];
+  var BC = ['var(--gray)', 'var(--purple)', 'var(--crimson)'];
+  document.getElementById('res4').innerHTML = RES.map(function (r) {
+    return '<div><h4>' + r[0] + '</h4>' + [1, 2, 3].map(function (i) {
+      return '<div class="hb' + (i === 3 ? ' hot' : '') + '"><div class="tr"><i style="width:' + (r[i] / 70 * 100) + '%;background:' + BC[i - 1] + '"></i></div><span>' + r[i].toFixed(1) + '</span></div>';
+    }).join('') + '</div>';
+  }).join('');
+
+  // ---------- copy bibtex ----------
+  document.getElementById('copyBtn').addEventListener('click', function () {
+    var btn = this, txt = document.getElementById('bibText').textContent;
+    if (navigator.clipboard) navigator.clipboard.writeText(txt).then(function () {
+      btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = 'Copy'; }, 1500);
+    }, function () {});
+  });
+})();
+</script>
+</body>
+</html>
